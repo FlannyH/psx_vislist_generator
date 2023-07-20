@@ -1,8 +1,8 @@
-use std::{fs::File, io::{Seek, SeekFrom}, mem::size_of, ffi::c_void, f32::consts::PI};
+use std::{fs::File, io::{Seek, SeekFrom}, mem::size_of, ffi::c_void, f32::consts::PI, collections::HashMap};
 use byteorder::{ReadBytesExt, LittleEndian};
+use gl::types::{GLenum, GLint, GLsizei, GLvoid};
 use glam::Mat4;
 use memoffset::offset_of;
-use gl::types::GLenum;
 use gl::types::GLfloat;
 use glam::Vec3;
 use glfw::Context;
@@ -118,6 +118,8 @@ fn main() {
 
     // Read all the vertex buffers
     let mut vertices: Vec<Vertex> = Vec::new();
+    let mut render_positions: Vec<Vertex> = Vec::new();
+    let eye_height = 200;
     let mut mesh_id = 0;
     for mesh in mesh_descs {
         // Seek to vertex data
@@ -129,9 +131,24 @@ fn main() {
             let v0 = VertexPSX::read(&mut file);
             let v1 = VertexPSX::read(&mut file);
             let v2 = VertexPSX::read(&mut file);
+            let vtx0 = glam::vec3(v0.x as f32, v0.y as f32, v0.z as f32);
+            let vtx1 = glam::vec3(v1.x as f32, v1.y as f32, v1.z as f32);
+            let vtx2 = glam::vec3(v2.x as f32, v2.y as f32, v2.z as f32);
+            let v01 = vtx1 - vtx0;
+            let v02 = vtx2 - vtx0;
+            let normal = v01.cross(v02).normalize();
+            if normal.y > 0.5 {
+                render_positions.push(Vertex {
+                    x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / 3.0) as i16,
+                    y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / 3.0) as i16 - eye_height,
+                    z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / 3.0) as i16,
+                    section_id: mesh_id,
+                })
+            }
             vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id });
             vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id });
             vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id });
+            
         }
 
         // Read all the quads and convert them to triangles
@@ -141,6 +158,24 @@ fn main() {
             let v1 = VertexPSX::read(&mut file);
             let v2 = VertexPSX::read(&mut file);
             let v3 = VertexPSX::read(&mut file);
+
+            let vtx0 = glam::vec3(v0.x as f32, v0.y as f32, v0.z as f32);
+            let vtx1 = glam::vec3(v1.x as f32, v1.y as f32, v1.z as f32);
+            let vtx2 = glam::vec3(v2.x as f32, v2.y as f32, v2.z as f32);
+            let v01 = vtx1 - vtx0;
+            let v02 = vtx2 - vtx0;
+            let normal = v01.cross(v02).normalize();
+            if normal.y > 0.5 {
+                render_positions.push(Vertex {
+                    x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / 3.0) as i16,
+                    y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / 3.0) as i16 - eye_height,
+                    z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / 3.0) as i16,
+                    section_id: mesh_id,
+                })
+            }
+            vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id });
+            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id });
+            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id });
 
             // Tri 1
             vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id });
@@ -262,24 +297,37 @@ fn main() {
             vectors[0],
             glam::vec3(0.0, 1.0, 0.0),
         );
-        let position = Vec3 {
+        let mut position = Vec3 {
             x: -11689.984,
             z: -8182.0672,
             y: -10932.224,
         };
         let mut counter = 0;
-        let mut index = 0;
+        let mut vector_index = 0;
+        let mut position_index = 0;    
+        let buffer_size = (256 * 256 * 4) as usize;
+        let mut section_vislists = HashMap::<u16, u128>::new();
+        let mut buffer = vec![0u8; buffer_size];
         loop {
-            counter -= 1;
-            if counter < 0 {
-                counter = 60;
-                index += 1;
-                view_matrix = Mat4::look_at_rh(
-                    glam::vec3(0.0, 0.0, 0.0),
-                    vectors[index % 6],
-                    glam::vec3(0.0, 1.0, 0.0),
-                );
+            while counter < 300 {
+                window.swap_buffers();
+                glfw.poll_events();
+                counter += 1;
+                continue;
             }
+            // Set up view matrix
+            view_matrix = Mat4::look_at_rh(
+                glam::vec3(0.0, 0.0, 0.0),
+                vectors[vector_index],
+                glam::vec3(0.0, 1.0, 0.0),
+            );
+
+            // Set up render position
+            position.x = render_positions[position_index].x as f32;
+            position.y = render_positions[position_index].y as f32;
+            position.z = render_positions[position_index].z as f32;
+
+            // Render side of cubemap
             gl::UseProgram(program);
             gl::ClearColor(1.0, 1.0, 1.0, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
@@ -288,11 +336,37 @@ fn main() {
             gl::Enable(gl::DEPTH_TEST);
             gl::Enable(gl::CULL_FACE);
             gl::DrawArrays(gl::TRIANGLES, 0, vertices.len() as i32);
+
+            // Show to screen
             window.swap_buffers();
             glfw.poll_events();
-            if window.should_close() {
-                break
+
+            gl::ReadPixels(0, 0, 256, 256, gl::RGBA, gl::UNSIGNED_BYTE, buffer.as_mut_ptr() as *mut GLvoid);
+            for i in 0..buffer_size {
+                if buffer[i] != 255 {
+                    let curr_vislist = section_vislists.entry(render_positions[position_index].section_id).or_insert(0);
+                    *curr_vislist |= 1 << buffer[i];
+                }
             }
+
+            // Close if we press X
+            if window.should_close() {
+                break;
+            }
+
+            // Go to next angles and positions
+            vector_index += 1;
+            if vector_index >= 6 {
+                vector_index -= 6;
+                position_index += 1;
+                if position_index >= render_positions.len() {
+                    println!("done!");
+                    break;
+                }
+            }
+        }
+        for (key, value) in section_vislists {
+            println!("{key}: {value:X}")
         }
     }
 
