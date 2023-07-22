@@ -1,11 +1,11 @@
-use std::{fs::File, io::{Seek, SeekFrom}, mem::size_of, ffi::c_void, f32::consts::PI, collections::HashMap};
+#![allow(dead_code)]
+use std::{fs::File, io::{Seek, SeekFrom, Write}, mem::size_of, ffi::c_void, f32::consts::PI};
 use byteorder::{ReadBytesExt, LittleEndian};
-use gl::types::{GLenum, GLint, GLsizei, GLvoid};
+use gl::types::{GLenum, GLvoid};
 use glam::Mat4;
 use memoffset::offset_of;
 use gl::types::GLfloat;
 use glam::Vec3;
-use glfw::Context;
 
 struct HeaderFMSH {
     file_magic: u32,
@@ -39,6 +39,7 @@ struct VertexPSX {
     extra: u8,          // In the first vertex, this is an index into the texture collection, which determines which texture to use. In the second vertex, this is the size of the triangle.
 }
 
+#[derive(Debug)]
 struct Vertex {
     x: i16,
     y: i16,
@@ -46,9 +47,16 @@ struct Vertex {
     section_id: u16,
 }
 
+struct VertexCol {
+    x: i16,
+    y: i16,
+    z: i16,
+    terrain_id: u16,
+}
+
 impl HeaderFMSH {
     fn read(buf_reader: &mut File) -> HeaderFMSH {
-        return HeaderFMSH {
+        HeaderFMSH {
             file_magic: buf_reader.read_u32::<LittleEndian>().unwrap(),
             n_submeshes: buf_reader.read_u32::<LittleEndian>().unwrap(),
             offset_mesh_desc: buf_reader.read_u32::<LittleEndian>().unwrap(),
@@ -59,7 +67,7 @@ impl HeaderFMSH {
 
 impl MeshDesc {
     fn read(buf_reader: &mut File) -> MeshDesc {
-        return MeshDesc {
+        MeshDesc {
             vertex_start: buf_reader.read_u16::<LittleEndian>().unwrap(),
             n_triangles: buf_reader.read_u16::<LittleEndian>().unwrap(),
             n_quads: buf_reader.read_u16::<LittleEndian>().unwrap(),
@@ -76,7 +84,7 @@ impl MeshDesc {
 
 impl VertexPSX {
     fn read(buf_reader: &mut File) -> VertexPSX {
-        return VertexPSX {
+        VertexPSX {
             x: buf_reader.read_i16::<LittleEndian>().unwrap(),
             y: buf_reader.read_i16::<LittleEndian>().unwrap(),
             z: buf_reader.read_i16::<LittleEndian>().unwrap(),
@@ -90,6 +98,18 @@ impl VertexPSX {
     }
 }
 
+impl VertexCol {
+    fn read(buf_reader: &mut File) -> VertexCol {
+        VertexCol {
+            x: buf_reader.read_i16::<LittleEndian>().unwrap(),
+            y: buf_reader.read_i16::<LittleEndian>().unwrap(),
+            z: buf_reader.read_i16::<LittleEndian>().unwrap(),
+            terrain_id: buf_reader.read_u16::<LittleEndian>().unwrap(),
+        }
+    }
+}
+
+const RESOLUTION: u32 = 128;
 fn main() {
     // Open file
     let mut file = match File::open("D:/Projects/Git/ShooterPSX/assets/models/level.msh") {
@@ -120,83 +140,108 @@ fn main() {
     let mut vertices: Vec<Vertex> = Vec::new();
     let mut render_positions: Vec<Vertex> = Vec::new();
     let eye_height = 200;
-    let mut mesh_id = 0;
-    for mesh in mesh_descs {
+    for (mesh_id, mesh) in mesh_descs.iter().enumerate() {
         // Seek to vertex data
         file.seek(SeekFrom::Start(size_of::<HeaderFMSH>() as u64 + header_fmsh.offset_vertex_data as u64 + (mesh.vertex_start as u64 * size_of::<VertexPSX>() as u64))).unwrap();
 
         // Read all the triangles
-        for i in 0..mesh.n_triangles {
-            println!("mesh_id {mesh_id}, tri {i}, vertex {}", vertices.len());
+        for _ in 0..mesh.n_triangles {
             let v0 = VertexPSX::read(&mut file);
             let v1 = VertexPSX::read(&mut file);
             let v2 = VertexPSX::read(&mut file);
-            let vtx0 = glam::vec3(v0.x as f32, v0.y as f32, v0.z as f32);
-            let vtx1 = glam::vec3(v1.x as f32, v1.y as f32, v1.z as f32);
-            let vtx2 = glam::vec3(v2.x as f32, v2.y as f32, v2.z as f32);
-            let v01 = vtx1 - vtx0;
-            let v02 = vtx2 - vtx0;
-            let normal = v01.cross(v02).normalize();
-            if normal.y > 0.5 {
-                render_positions.push(Vertex {
-                    x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / 3.0) as i16,
-                    y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / 3.0) as i16 - eye_height,
-                    z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / 3.0) as i16,
-                    section_id: mesh_id,
-                })
-            }
-            vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id });
-            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id });
-            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id });
+            vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id as u16 });
             
         }
 
         // Read all the quads and convert them to triangles
-        for i in 0..mesh.n_quads {
-            println!("mesh_id {mesh_id}, quad {i}, vertex {}", vertices.len());
+        for _ in 0..mesh.n_quads {
             let v0 = VertexPSX::read(&mut file);
             let v1 = VertexPSX::read(&mut file);
             let v2 = VertexPSX::read(&mut file);
             let v3 = VertexPSX::read(&mut file);
 
-            let vtx0 = glam::vec3(v0.x as f32, v0.y as f32, v0.z as f32);
-            let vtx1 = glam::vec3(v1.x as f32, v1.y as f32, v1.z as f32);
-            let vtx2 = glam::vec3(v2.x as f32, v2.y as f32, v2.z as f32);
-            let v01 = vtx1 - vtx0;
-            let v02 = vtx2 - vtx0;
-            let normal = v01.cross(v02).normalize();
-            if normal.y > 0.5 {
-                render_positions.push(Vertex {
-                    x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / 3.0) as i16,
-                    y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / 3.0) as i16 - eye_height,
-                    z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / 3.0) as i16,
-                    section_id: mesh_id,
-                })
-            }
-            vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id });
-            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id });
-            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id });
-
             // Tri 1
-            vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id });
-            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id });
-            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id });
+            vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id as u16 });
 
             // Tri 2
-            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id });
-            vertices.push(Vertex { x: v3.x, y: v3.y, z: v3.z, section_id: mesh_id });
-            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id });
+            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v3.x, y: v3.y, z: v3.z, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id as u16 });
+        }
+    }
+
+    // Open the collision model to find the sampling positions
+    let mut file_col = match File::open("D:/Projects/Git/ShooterPSX/assets/models/level.col") {
+        Ok(file_col) => file_col,
+        Err(err) => {
+            eprintln!("Failed to open file: {err}");
+            return;
+        }
+    };
+
+    // Make sure it is a valid file
+    let file_magic = file_col.read_u32::<LittleEndian>().unwrap();
+    if file_magic != 0x4C4F4346 {
+        eprintln!("Failed to open collision model!");
+        return;
+    }
+
+    // Loop over all triangles
+    let n_tris = file_col.read_u32::<LittleEndian>().unwrap() / 3;
+    for _ in 0..n_tris {
+        // Read vertex
+        let v0 = VertexCol::read(&mut file_col);
+        let v1 = VertexCol::read(&mut file_col);
+        let v2 = VertexCol::read(&mut file_col);
+
+        // Find the section it is in
+        let mut section_id = 0;
+        'outer_loop: for vertex in [&v0, &v1 ,&v2] {
+            for mesh in &mesh_descs {
+                if vertex.x >= mesh.x_min &&
+                   vertex.x <= mesh.x_max &&
+                   vertex.y >= mesh.y_min &&
+                   vertex.y <= mesh.y_max &&
+                   vertex.z >= mesh.z_min &&
+                   vertex.z <= mesh.z_max {
+                    break 'outer_loop;
+                }
+                section_id += 1;
+            }
+        }
+        if section_id > mesh_descs.len() {
+            continue;
         }
 
-        mesh_id += 1;
+        // Generate normal
+        let vtx0 = glam::vec3(v0.x as f32, v0.y as f32, v0.z as f32);
+        let vtx1 = glam::vec3(v1.x as f32, v1.y as f32, v1.z as f32);
+        let vtx2 = glam::vec3(v2.x as f32, v2.y as f32, v2.z as f32);
+        let v01 = vtx1 - vtx0;
+        let v02 = vtx2 - vtx0;
+        let normal = v01.cross(v02).normalize();
+
+        // If the geometry points upward enough, assume it's a spot the player can walk, and we should sample it
+        if normal.y > 0.5 {
+            render_positions.push(Vertex {
+                x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / 3.0) as i16,
+                y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / 3.0) as i16 - eye_height,
+                z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / 3.0) as i16,
+                section_id: section_id as u16,
+            })
+        }
     }
 
     // Set up a basic OpenGL setup
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
 
     // Create an invisible window
-    let (mut window, _events) = glfw
-        .create_window(256, 256, "title", glfw::WindowMode::Windowed)
+    let (window, _events) = glfw
+        .create_window(RESOLUTION, RESOLUTION, "title", glfw::WindowMode::Windowed)
         .expect("Failed to create window.");
     glfw.make_context_current(Some(&window));
 
@@ -228,9 +273,11 @@ fn main() {
 
                 // Vert output
                 out float o_section_id;
+                out vec3 o_position;
 
                 void main() {
-                    gl_Position = u_matrix * vec4(i_position * vec3(-0.000244140625) - u_position * vec3(-0.000244140625), 1);
+                    gl_Position = u_matrix * vec4(i_position, 1);
+                    o_position = i_position;
                     o_section_id = i_section_id;
                 }
             "),
@@ -242,10 +289,17 @@ fn main() {
                 #version 460
 
                 in float o_section_id;
+                in vec3 o_position;
                 out vec4 frag_color;
 
                 void main() {
-                    frag_color = vec4(o_section_id / 256.0, 0.0, 0.0, 1.0);
+                    frag_color = vec4(o_section_id / 255.0, gl_FragCoord.w / 4.0, 0.0, 1.0);
+                    frag_color = vec4(
+                        o_section_id / 255.0, 
+                        gl_FragCoord.z, 
+                        abs(mod(o_position.y, 512.0) - 256), 
+                        256.0) / vec4(256.0);
+                    frag_color.x = o_section_id / 255.0;
                 }
             "),
             program,
@@ -289,65 +343,59 @@ fn main() {
         glam::vec3(0.0, 0.0, 1.0),
         glam::vec3(0.0, 0.0, -1.0),
     ];
+
     unsafe {
-        let proj_matrix = Mat4::perspective_rh(PI / 4.0, 1.0, 0.1, 10000.0);
+        let proj_matrix = Mat4::perspective_lh(PI / 4.0, 1.0, 0.01, 1000000.0);
         
-        let mut view_matrix = Mat4::look_at_rh(
-            glam::vec3(0.0, 0.0, 0.0),
-            vectors[0],
-            glam::vec3(0.0, 1.0, 0.0),
-        );
+        let mut view_matrix;
+        
+
         let mut position = Vec3 {
             x: -11689.984,
             z: -8182.0672,
             y: -10932.224,
         };
-        let mut counter = 0;
         let mut vector_index = 0;
         let mut position_index = 0;    
-        let buffer_size = (256 * 256 * 4) as usize;
-        let mut section_vislists = HashMap::<u16, u128>::new();
+        let buffer_size = (RESOLUTION * RESOLUTION * 4) as usize;
+        let mut section_vislists = vec![0u128; header_fmsh.n_submeshes as usize];
         let mut buffer = vec![0u8; buffer_size];
         loop {
-            while counter < 300 {
-                window.swap_buffers();
-                glfw.poll_events();
-                counter += 1;
-                continue;
-            }
-            // Set up view matrix
-            view_matrix = Mat4::look_at_rh(
-                glam::vec3(0.0, 0.0, 0.0),
-                vectors[vector_index],
-                glam::vec3(0.0, 1.0, 0.0),
-            );
-
             // Set up render position
             position.x = render_positions[position_index].x as f32;
             position.y = render_positions[position_index].y as f32;
             position.z = render_positions[position_index].z as f32;
+            
+            // Set up view matrix
+            view_matrix = Mat4::look_to_lh(
+                position,
+                vectors[vector_index],
+                glam::vec3(0.0, -1.0, 0.0),
+            );
+
+            // Combined matrix
+            let comb_mat = proj_matrix * view_matrix;
 
             // Render side of cubemap
             gl::UseProgram(program);
             gl::ClearColor(1.0, 1.0, 1.0, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
-            gl::UniformMatrix4fv(0, 1, gl::FALSE, (proj_matrix * view_matrix).as_ref().as_ptr() as *const GLfloat);
+            gl::UniformMatrix4fv(0, 1, gl::FALSE, comb_mat.as_ref().as_ptr() as *const GLfloat);
             gl::Uniform3fv(1, 1, position.as_ref().as_ptr() as *const GLfloat);
             gl::Enable(gl::DEPTH_TEST);
             gl::Enable(gl::CULL_FACE);
             gl::DrawArrays(gl::TRIANGLES, 0, vertices.len() as i32);
 
-            // Show to screen
-            window.swap_buffers();
-            glfw.poll_events();
-
-            gl::ReadPixels(0, 0, 256, 256, gl::RGBA, gl::UNSIGNED_BYTE, buffer.as_mut_ptr() as *mut GLvoid);
-            for i in 0..buffer_size {
+            gl::ReadPixels(0, 0, RESOLUTION as i32, RESOLUTION as i32, gl::RGBA, gl::UNSIGNED_BYTE, buffer.as_mut_ptr() as *mut GLvoid);
+            for i in (0..buffer_size).step_by(4) {
                 if buffer[i] != 255 {
-                    let curr_vislist = section_vislists.entry(render_positions[position_index].section_id).or_insert(0);
-                    *curr_vislist |= 1 << buffer[i];
+                    section_vislists[render_positions[position_index].section_id as usize] |= 1 << buffer[i];
                 }
             }
+
+            // Show to screen
+            //window.swap_buffers();
+            //glfw.poll_events();
 
             // Close if we press X
             if window.should_close() {
@@ -365,12 +413,25 @@ fn main() {
                 }
             }
         }
-        for (key, value) in section_vislists {
-            println!("{key}: {value:X}")
+
+        // Open output file
+        let mut file = match File::create("D:/Projects/Git/ShooterPSX/assets/models/level.vis") {
+            Ok(file) => file,
+            Err(err) => {
+                eprintln!("Failed to open file: {err}");
+                return;
+            }
+        };
+
+        // Write "FVIS" followed by number of sections
+        file.write_all(&0x53495646u32.to_le_bytes()).unwrap();
+        file.write_all(&(section_vislists.len() as u32).to_le_bytes()).unwrap();
+        // Write nu
+
+        for section in section_vislists {
+            file.write_all(&section.to_le_bytes()).unwrap();
         }
     }
-
-    return;
 }
 
 fn load_shader_part(shader_type: GLenum, source: String, program: u32) {
