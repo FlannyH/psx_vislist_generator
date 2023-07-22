@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use std::{fs::File, io::{Seek, SeekFrom, Write}, mem::size_of, ffi::c_void, f32::consts::PI};
+use std::{fs::File, io::{Seek, SeekFrom, Write}, mem::size_of, ffi::c_void, f32::consts::PI, path::Path};
 use byteorder::{ReadBytesExt, LittleEndian};
 use gl::types::{GLenum, GLvoid};
 use glam::Mat4;
@@ -111,8 +111,37 @@ impl VertexCol {
 
 const RESOLUTION: u32 = 128;
 fn main() {
-    // Open file
-    let mut file = match File::open("D:/Projects/Git/ShooterPSX/assets/models/level.msh") {
+    // Get command line arguments and check if we have one
+    let args: Vec<String> = std::env::args().collect();
+    if (args.len() != 4) 
+    || (!args[1].ends_with(".msh")) 
+    || (!args[2].ends_with(".col")) 
+    || (!args[3].ends_with(".vis")) 
+    {
+        println!("Usage: psx_vislist_generator.exe <input.msh> <input.col> <input.vis>");
+        return;
+    }
+
+    // Open the collision model to use for finding the sampling positions
+    let mut input_col = match File::open(Path::new(args[2].as_str())) {
+        Ok(input_col) => input_col,
+        Err(err) => {
+            eprintln!("Failed to open file: {err}");
+            return;
+        }
+    };
+
+    // Open the visual mesh file to use for determining what is visible from the sampling positions
+    let mut input_msh = match File::open(Path::new(args[1].as_str())) {
+        Ok(file) => file,
+        Err(err) => {
+            eprintln!("Failed to open file: {err}");
+            return;
+        }
+    };
+
+    // Open output file that will store the visibility lists
+    let mut output_vis = match File::create(Path::new(args[3].as_str())) {
         Ok(file) => file,
         Err(err) => {
             eprintln!("Failed to open file: {err}");
@@ -121,7 +150,7 @@ fn main() {
     };
 
     // Read header
-    let header_fmsh = HeaderFMSH::read(&mut file);
+    let header_fmsh = HeaderFMSH::read(&mut input_msh);
 
     // Check file magic
     if header_fmsh.file_magic != 0x48534D46 {
@@ -132,8 +161,8 @@ fn main() {
     // Get all the mesh descriptions
     let mut mesh_descs = Vec::new();
     for i in 0..header_fmsh.n_submeshes {
-        file.seek(SeekFrom::Start(size_of::<HeaderFMSH>() as u64 + header_fmsh.offset_mesh_desc as u64 + (size_of::<MeshDesc>() * i as usize) as u64)).unwrap();
-        mesh_descs.push(MeshDesc::read(&mut file));
+        input_msh.seek(SeekFrom::Start(size_of::<HeaderFMSH>() as u64 + header_fmsh.offset_mesh_desc as u64 + (size_of::<MeshDesc>() * i as usize) as u64)).unwrap();
+        mesh_descs.push(MeshDesc::read(&mut input_msh));
     }
 
     // Read all the vertex buffers
@@ -142,13 +171,13 @@ fn main() {
     let eye_height = 200;
     for (mesh_id, mesh) in mesh_descs.iter().enumerate() {
         // Seek to vertex data
-        file.seek(SeekFrom::Start(size_of::<HeaderFMSH>() as u64 + header_fmsh.offset_vertex_data as u64 + (mesh.vertex_start as u64 * size_of::<VertexPSX>() as u64))).unwrap();
+        input_msh.seek(SeekFrom::Start(size_of::<HeaderFMSH>() as u64 + header_fmsh.offset_vertex_data as u64 + (mesh.vertex_start as u64 * size_of::<VertexPSX>() as u64))).unwrap();
 
         // Read all the triangles
         for _ in 0..mesh.n_triangles {
-            let v0 = VertexPSX::read(&mut file);
-            let v1 = VertexPSX::read(&mut file);
-            let v2 = VertexPSX::read(&mut file);
+            let v0 = VertexPSX::read(&mut input_msh);
+            let v1 = VertexPSX::read(&mut input_msh);
+            let v2 = VertexPSX::read(&mut input_msh);
             vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id as u16 });
             vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id as u16 });
             vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id as u16 });
@@ -157,10 +186,10 @@ fn main() {
 
         // Read all the quads and convert them to triangles
         for _ in 0..mesh.n_quads {
-            let v0 = VertexPSX::read(&mut file);
-            let v1 = VertexPSX::read(&mut file);
-            let v2 = VertexPSX::read(&mut file);
-            let v3 = VertexPSX::read(&mut file);
+            let v0 = VertexPSX::read(&mut input_msh);
+            let v1 = VertexPSX::read(&mut input_msh);
+            let v2 = VertexPSX::read(&mut input_msh);
+            let v3 = VertexPSX::read(&mut input_msh);
 
             // Tri 1
             vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id as u16 });
@@ -174,29 +203,20 @@ fn main() {
         }
     }
 
-    // Open the collision model to find the sampling positions
-    let mut file_col = match File::open("D:/Projects/Git/ShooterPSX/assets/models/level.col") {
-        Ok(file_col) => file_col,
-        Err(err) => {
-            eprintln!("Failed to open file: {err}");
-            return;
-        }
-    };
-
     // Make sure it is a valid file
-    let file_magic = file_col.read_u32::<LittleEndian>().unwrap();
+    let file_magic = input_col.read_u32::<LittleEndian>().unwrap();
     if file_magic != 0x4C4F4346 {
         eprintln!("Failed to open collision model!");
         return;
     }
 
     // Loop over all triangles
-    let n_tris = file_col.read_u32::<LittleEndian>().unwrap() / 3;
+    let n_tris = input_col.read_u32::<LittleEndian>().unwrap() / 3;
     for _ in 0..n_tris {
         // Read vertex
-        let v0 = VertexCol::read(&mut file_col);
-        let v1 = VertexCol::read(&mut file_col);
-        let v2 = VertexCol::read(&mut file_col);
+        let v0 = VertexCol::read(&mut input_col);
+        let v1 = VertexCol::read(&mut input_col);
+        let v2 = VertexCol::read(&mut input_col);
 
         // Find the section it is in
         let mut section_id = 0;
@@ -414,22 +434,13 @@ fn main() {
             }
         }
 
-        // Open output file
-        let mut file = match File::create("D:/Projects/Git/ShooterPSX/assets/models/level.vis") {
-            Ok(file) => file,
-            Err(err) => {
-                eprintln!("Failed to open file: {err}");
-                return;
-            }
-        };
-
         // Write "FVIS" followed by number of sections
-        file.write_all(&0x53495646u32.to_le_bytes()).unwrap();
-        file.write_all(&(section_vislists.len() as u32).to_le_bytes()).unwrap();
+        output_vis.write_all(&0x53495646u32.to_le_bytes()).unwrap();
+        output_vis.write_all(&(section_vislists.len() as u32).to_le_bytes()).unwrap();
         // Write nu
 
         for section in section_vislists {
-            file.write_all(&section.to_le_bytes()).unwrap();
+            output_vis.write_all(&section.to_le_bytes()).unwrap();
         }
     }
 }
