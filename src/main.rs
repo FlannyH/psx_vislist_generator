@@ -1,11 +1,14 @@
 #![allow(dead_code)]
-use std::{fs::File, io::{Seek, SeekFrom, Write}, mem::size_of, ffi::c_void, f32::consts::PI, path::Path};
+use std::{fs::File, io::{Seek, SeekFrom, Write}, mem::size_of, ffi::c_void, f32::consts::PI, path::Path, time::Duration, collections::HashMap};
 use byteorder::{ReadBytesExt, LittleEndian};
 use gl::types::{GLenum, GLvoid};
 use glam::Mat4;
 use memoffset::offset_of;
 use gl::types::GLfloat;
 use glam::Vec3;
+use glfw::Context;
+use image::ImageBuffer;
+use image::Rgba;
 
 struct HeaderFMSH {
     file_magic: u32,
@@ -44,6 +47,9 @@ struct Vertex {
     x: i16,
     y: i16,
     z: i16,
+    r: u8,
+    g: u8,
+    b: u8,
     section_id: u16,
 }
 
@@ -169,6 +175,8 @@ fn main() {
     let mut vertices: Vec<Vertex> = Vec::new();
     let mut render_positions: Vec<Vertex> = Vec::new();
     let eye_height = 200;
+	let mut x_min = 32767;
+	let mut x_max = -32768;
     for (mesh_id, mesh) in mesh_descs.iter().enumerate() {
         // Seek to vertex data
         input_msh.seek(SeekFrom::Start(size_of::<HeaderFMSH>() as u64 + header_fmsh.offset_vertex_data as u64 + (mesh.vertex_start as u64 * size_of::<VertexPSX>() as u64))).unwrap();
@@ -178,9 +186,15 @@ fn main() {
             let v0 = VertexPSX::read(&mut input_msh);
             let v1 = VertexPSX::read(&mut input_msh);
             let v2 = VertexPSX::read(&mut input_msh);
-            vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id as u16 });
-            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id as u16 });
-            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id as u16 });
+			x_min = x_min.min(v0.x);
+			x_min = x_min.min(v1.x);
+			x_min = x_min.min(v2.x);
+			x_max = x_max.max(v0.x);
+			x_max = x_max.max(v1.x);
+			x_max = x_max.max(v2.x);
+            vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, r: v0.r, g: v0.g, b: v0.b, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, r: v1.r, g: v1.g, b: v1.b, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, r: v2.r, g: v2.g, b: v2.b, section_id: mesh_id as u16 });
             
         }
 
@@ -190,18 +204,28 @@ fn main() {
             let v1 = VertexPSX::read(&mut input_msh);
             let v2 = VertexPSX::read(&mut input_msh);
             let v3 = VertexPSX::read(&mut input_msh);
+			x_min = x_min.min(v0.x);
+			x_min = x_min.min(v1.x);
+			x_min = x_min.min(v2.x);
+			x_min = x_min.min(v3.x);
+			x_max = x_max.max(v0.x);
+			x_max = x_max.max(v1.x);
+			x_max = x_max.max(v2.x);
+			x_max = x_max.max(v3.x);
 
             // Tri 1
-            vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, section_id: mesh_id as u16 });
-            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id as u16 });
-            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v0.x, y: v0.y, z: v0.z, r: v0.r, g: v0.g, b: v0.b, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, r: v1.r, g: v1.g, b: v1.b, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, r: v2.r, g: v2.g, b: v2.b, section_id: mesh_id as u16 });
 
             // Tri 2
-            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, section_id: mesh_id as u16 });
-            vertices.push(Vertex { x: v3.x, y: v3.y, z: v3.z, section_id: mesh_id as u16 });
-            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v1.x, y: v1.y, z: v1.z, r: v1.r, g: v1.g, b: v1.b, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v3.x, y: v3.y, z: v3.z, r: v3.r, g: v3.g, b: v3.b, section_id: mesh_id as u16 });
+            vertices.push(Vertex { x: v2.x, y: v2.y, z: v2.z, r: v2.r, g: v2.g, b: v2.b, section_id: mesh_id as u16 });
         }
     }
+
+	println!("x = [{x_min}, {x_max}]");
 
     // Make sure it is a valid file
     let file_magic = input_col.read_u32::<LittleEndian>().unwrap();
@@ -212,14 +236,24 @@ fn main() {
 
     // Loop over all triangles
     let n_tris = input_col.read_u32::<LittleEndian>().unwrap() / 3;
+	let mut x_min = 32767;
+	let mut x_max = -32768;
     for _ in 0..n_tris {
         // Read vertex
         let v0 = VertexCol::read(&mut input_col);
         let v1 = VertexCol::read(&mut input_col);
         let v2 = VertexCol::read(&mut input_col);
+		
+		x_min = x_min.min(v0.x);
+		x_min = x_min.min(v1.x);
+		x_min = x_min.min(v2.x);
+		x_max = x_max.max(v0.x);
+		x_max = x_max.max(v1.x);
+		x_max = x_max.max(v2.x);
 
         // Find the section it is in
         let mut section_id = 0;
+		let mut section_ids = vec![];
         'outer_loop: for vertex in [&v0, &v1 ,&v2] {
             for mesh in &mesh_descs {
                 if vertex.x >= mesh.x_min &&
@@ -228,14 +262,24 @@ fn main() {
                    vertex.y <= mesh.y_max &&
                    vertex.z >= mesh.z_min &&
                    vertex.z <= mesh.z_max {
-                    break 'outer_loop;
+                    //break 'outer_loop;
+					section_ids.push(section_id);
                 }
                 section_id += 1;
             }
         }
+
+		section_id = section_ids[0];
+
+		// If this position is not in a section, skip it
         if section_id > mesh_descs.len() {
             continue;
         }
+
+		// If this position is in multiple sections, skip it to avoid false positives
+		//if section_ids.len() > 1 {
+		//	continue
+		//}
 
         // Generate normal
         let vtx0 = glam::vec3(v0.x as f32, v0.y as f32, v0.z as f32);
@@ -247,20 +291,26 @@ fn main() {
 
         // If the geometry points upward enough, assume it's a spot the player can walk, and we should sample it
         if normal.y > 0.5 {
+			let index = render_positions.len();
             render_positions.push(Vertex {
                 x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / 3.0) as i16,
                 y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / 3.0) as i16 - eye_height,
                 z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / 3.0) as i16,
+				r: 0,
+				g: 0,
+				b: 0,
                 section_id: section_id as u16,
-            })
+            });
+			println!("v {} {} {}", render_positions[index].x, render_positions[index].y, render_positions[index].z);
         }
     }
+	println!("[{x_min}, {x_max}]");
 
     // Set up a basic OpenGL setup
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
 
     // Create an invisible window
-    let (window, _events) = glfw
+    let (mut window, _events) = glfw
         .create_window(RESOLUTION, RESOLUTION, "title", glfw::WindowMode::Windowed)
         .expect("Failed to create window.");
     glfw.make_context_current(Some(&window));
@@ -285,7 +335,8 @@ fn main() {
 
                 // Vertex input
                 layout (location = 0) in vec3 i_position;
-                layout (location = 1) in float i_section_id;
+                layout (location = 1) in vec3 i_color;
+                layout (location = 2) in float i_section_id;
 
                 // View matrix
                 layout (location = 0) uniform mat4 u_matrix;
@@ -294,11 +345,16 @@ fn main() {
                 // Vert output
                 out float o_section_id;
                 out vec3 o_position;
+				out vec3 o_color;
 
                 void main() {
                     gl_Position = u_matrix * vec4(i_position, 1);
                     o_position = i_position;
                     o_section_id = i_section_id;
+					o_color = i_color;
+					o_color.x /= 255.0;
+					o_color.y /= 255.0;
+					o_color.z /= 255.0;
                 }
             "),
             program,
@@ -310,6 +366,7 @@ fn main() {
 
                 in float o_section_id;
                 in vec3 o_position;
+				in vec3 o_color;
                 out vec4 frag_color;
 
                 void main() {
@@ -319,7 +376,10 @@ fn main() {
                         gl_FragCoord.z, 
                         abs(mod(o_position.y, 512.0) - 256), 
                         256.0) / vec4(256.0);
-                    frag_color.x = o_section_id / 255.0;
+                    frag_color.w = o_section_id / 255.0;
+					frag_color.x = o_color.x;
+					frag_color.y = o_color.y;
+					frag_color.z = o_color.z;
                 }
             "),
             program,
@@ -341,9 +401,11 @@ fn main() {
 
         // Define vertex layout
         gl::VertexAttribPointer(0, 3, gl::SHORT, gl::FALSE, size_of::<Vertex>() as i32, offset_of!(Vertex, x) as *const _);
-        gl::VertexAttribPointer(1, 1, gl::UNSIGNED_SHORT, gl::FALSE, size_of::<Vertex>() as i32, offset_of!(Vertex, section_id) as *const _);
+        gl::VertexAttribPointer(1, 3, gl::UNSIGNED_BYTE, gl::FALSE, size_of::<Vertex>() as i32, offset_of!(Vertex, r) as *const _);
+        gl::VertexAttribPointer(2, 1, gl::UNSIGNED_SHORT, gl::FALSE, size_of::<Vertex>() as i32, offset_of!(Vertex, section_id) as *const _);
         gl::EnableVertexAttribArray(0);
         gl::EnableVertexAttribArray(1);
+        gl::EnableVertexAttribArray(2);
 
         // Upload the buffer
         gl::BufferData(
@@ -365,7 +427,7 @@ fn main() {
     ];
 
     unsafe {
-        let proj_matrix = Mat4::perspective_lh(PI / 4.0, 1.0, 0.01, 1000000.0);
+        let proj_matrix = Mat4::perspective_lh(PI / 4.0, 1.0, 0.01, 100000.0);
         
         let mut view_matrix;
         
@@ -407,11 +469,41 @@ fn main() {
             gl::DrawArrays(gl::TRIANGLES, 0, vertices.len() as i32);
 
             gl::ReadPixels(0, 0, RESOLUTION as i32, RESOLUTION as i32, gl::RGBA, gl::UNSIGNED_BYTE, buffer.as_mut_ptr() as *mut GLvoid);
-            for i in (0..buffer_size).step_by(4) {
+			let mut representations = HashMap::<u8, i32>::new();
+
+			// Check each pixel in the cubemap side, and count how many pixels each section occupies in it
+            for i in (3..buffer_size).step_by(4) {
                 if buffer[i] != 255 {
-                    section_vislists[render_positions[position_index].section_id as usize] |= 1 << buffer[i];
+					*representations.entry(buffer[i]).or_insert(0) += 1;
                 }
             }
+
+			// For each pair of section (key) and pixel representation (value)
+			for (key, value) in representations {
+				// Ignore if the section is not represented enough
+				if (value as f64 / (RESOLUTION * RESOLUTION) as f64) < 0.001 {
+					continue;
+				}
+				
+				if section_vislists[render_positions[position_index].section_id as usize] & 1 << key == 0 {
+					println!("from section {}, section {} is visible from position {}, {}, {}", 
+						render_positions[position_index].section_id,
+						key,
+						position.x / -4096.0, position.z / -4096.0, position.y / -4096.0
+					);
+					//let img = ImageBuffer::<Rgba<u8>, _>::from_vec(RESOLUTION, RESOLUTION, buffer.clone()).unwrap();
+					//img.save(
+					//	format!("from_{}_to_{}_at_{}_{}_{}.png", 
+					//		render_positions[position_index].section_id,
+					//		key,
+					//		-position.x, -position.z, -position.y
+					//	)
+					//);
+				}
+
+				// Mark this section as visible from the other section
+				section_vislists[render_positions[position_index].section_id as usize] |= 1 << key;
+			}
 
             // Show to screen
             //window.swap_buffers();
