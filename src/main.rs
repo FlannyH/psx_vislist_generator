@@ -14,7 +14,8 @@ struct HeaderFMSH {
     file_magic: u32,
     n_submeshes: u32,
     offset_mesh_desc: u32,
-    offset_vertex_data: u32
+    offset_vertex_data: u32,
+    offset_mesh_names: u32
 }
 
 struct MeshDesc {
@@ -67,6 +68,7 @@ impl HeaderFMSH {
             n_submeshes: buf_reader.read_u32::<LittleEndian>().unwrap(),
             offset_mesh_desc: buf_reader.read_u32::<LittleEndian>().unwrap(),
             offset_vertex_data: buf_reader.read_u32::<LittleEndian>().unwrap(),
+            offset_mesh_names: buf_reader.read_u32::<LittleEndian>().unwrap(),
         }
     }
 }
