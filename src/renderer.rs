@@ -1,7 +1,7 @@
 use std::{ffi::c_void, mem::size_of, f32::consts::PI, collections::HashMap};
 
 use gl::types::{GLenum, GLfloat, GLvoid};
-use glam::{Vec3, Mat4};
+use glam::{Vec3, Mat4, Vec4};
 use glfw::{Glfw, Window, Context};
 use image::{ImageBuffer, Rgba};
 use memoffset::offset_of;
@@ -203,24 +203,37 @@ pub fn upload_mesh_to_gpu(&mut self, vertices: &Vec<Vertex>) {
 
 pub fn get_visibility_at_position(&mut self, position: Vec3, dbg_curr_field: u128, node_id: usize) -> u128 {    
     // Set uniform variables
+
+    //let modified_position = Vec4::new(-Z)
+
+    let mut view_matrices = [
+        glam::mat4(Vec4::Z, Vec4::NEG_Y, Vec4::X, Vec4::W),
+        glam::mat4(Vec4::NEG_Z, Vec4::NEG_Y, Vec4::NEG_X, Vec4::W),
+        glam::mat4(Vec4::NEG_X, Vec4::Z, Vec4::Y, Vec4::W),
+        glam::mat4(Vec4::NEG_X, Vec4::NEG_Z, Vec4::NEG_Y, Vec4::W),
+        glam::mat4(Vec4::NEG_X, Vec4::NEG_Y, Vec4::Z, Vec4::W),
+        glam::mat4(Vec4::X, Vec4::NEG_Y, Vec4::NEG_Z, Vec4::W),
+    ];    
+    for mat in &mut view_matrices {
+        mat.w_axis = mat.mul_vec4((-position).extend(1.0));
+    }
     let vectors = [
         glam::vec3(1.0, 0.0, 0.0),
         glam::vec3(-1.0, 0.0, 0.0),
-        glam::vec3(0.0, 1.0, 0.0),
-        glam::vec3(0.0, -1.0, 0.0),
+        glam::vec3(0.0, 0.99, 0.01),
+        glam::vec3(0.0, -0.99, 0.01),
         glam::vec3(0.0, 0.0, 1.0),
         glam::vec3(0.0, 0.0, -1.0),
     ];
-
     let proj_matrix = Mat4::perspective_lh(PI / 4.0, 1.0, 0.01, 100000.0);
     let buffer_size = (RESOLUTION * RESOLUTION * 4) as usize;
     let mut vis_field = 0u128;
     let mut buffer = vec![0u8; buffer_size];
-
-    for face in vectors {
-        let view_matrix = Mat4::look_to_lh(
+    for (id, view_matrix) in view_matrices.iter().enumerate() {
+        let view_matrix = *view_matrix;
+        let view_matrix2 = Mat4::look_to_lh(
             position,
-            face,
+            vectors[id],
             glam::vec3(0.0, -1.0, 0.0),
         );
         let comb_mat = proj_matrix * view_matrix;
@@ -247,22 +260,10 @@ pub fn get_visibility_at_position(&mut self, position: Vec3, dbg_curr_field: u12
         // For each pair of section (key) and pixel representation (value)
         for (key, value) in representations {
             // Ignore if the section is not represented enough
-            if (value as f64 / (RESOLUTION * RESOLUTION) as f64) < 0.0002 {
+            if (value as f64 / (RESOLUTION * RESOLUTION) as f64) <= 0.00025 {
                 continue;
             }
 
-            // Mark this section as visible from this position
-            if (dbg_curr_field & (1 << key)) == 0 {
-                print!("{key}, ");
-                let img = ImageBuffer::<Rgba<u8>, _>::from_vec(RESOLUTION, RESOLUTION, buffer.clone()).unwrap();
-                img.save(
-                	format!("from_node_{}_at_{}_{}_{}_we_see_{}.png", 
-                        node_id,
-                        -position.x, -position.z, -position.y,
-                		key,
-                	)
-                ).unwrap();
-            }
             vis_field |= 1 << key;
         }
     }

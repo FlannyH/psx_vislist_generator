@@ -177,7 +177,10 @@ fn get_visbox_positions_from_input_col(
             z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / 3.0) as i16,
             r: 0,
             g: 0,
-            b: 0,
+            b: match normal.y > 0.5 {
+                true => 1,
+                false => 0,
+            },
             section_id: 0,
         });
     }
