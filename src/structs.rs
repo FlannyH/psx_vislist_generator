@@ -2,6 +2,7 @@ use std::fs::File;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 
+#[repr(C)]
 pub struct HeaderFMSH {
     pub file_magic: u32,
     pub n_submeshes: u32,
@@ -10,6 +11,7 @@ pub struct HeaderFMSH {
     pub offset_mesh_names: u32,
 }
 
+#[repr(C)]
 pub struct MeshDesc {
     pub vertex_start: u16, // First vertex index for this model
     pub n_triangles: u16,  // Number of vertices for this model
@@ -23,6 +25,7 @@ pub struct MeshDesc {
     pub pad: i16,
 }
 
+#[repr(C)]
 pub struct VertexPSX {
     pub x: i16,    // Position X
     pub y: i16,    // Position Y
@@ -36,6 +39,7 @@ pub struct VertexPSX {
 }
 
 #[derive(Debug)]
+#[repr(C)]
 pub struct Vertex {
     pub x: i16,
     pub y: i16,
