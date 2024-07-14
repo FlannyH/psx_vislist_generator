@@ -2,6 +2,7 @@ use std::{ffi::c_void, mem::size_of, f32::consts::PI, collections::HashMap};
 
 use gl::types::{GLenum, GLfloat, GLvoid};
 use glam::{Vec3, Mat4, Vec4};
+use glfw::{Glfw, Window, Context};
 use memoffset::offset_of;
 
 use crate::structs::Vertex;
@@ -13,6 +14,8 @@ pub struct Renderer {
     vao: u32,
     vbo: u32,
     n_vertices: i32,
+    window: Window,
+    glfw: Glfw,
 }
 
 impl Renderer {
@@ -21,10 +24,12 @@ pub fn new() -> Self {
     let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
 
     // Create an invisible window
+    glfw.window_hint(glfw::WindowHint::Visible(false));
     let (window, _events) = glfw
         .create_window(RESOLUTION, RESOLUTION, "title", glfw::WindowMode::Windowed)
         .expect("Failed to create window.");
     glfw.make_context_current(Some(&window));
+    glfw.set_swap_interval(glfw::SwapInterval::None);
 
     // Init OpenGL
     gl::load_with(|f_name| glfw.get_proc_address_raw(f_name));
@@ -108,6 +113,8 @@ pub fn new() -> Self {
         vao: 0,
         vbo: 0,
         n_vertices: 0,
+        window,
+        glfw,
     }
 }
 
@@ -229,6 +236,8 @@ pub fn get_visibility_at_position(&mut self, position: Vec3, _dbg_curr_field: u1
             gl::Enable(gl::CULL_FACE);
             gl::DrawArrays(gl::TRIANGLES, 0, self.n_vertices as i32);
             gl::ReadPixels(0, 0, RESOLUTION as i32, RESOLUTION as i32, gl::RGBA, gl::UNSIGNED_BYTE, buffer.as_mut_ptr() as *mut GLvoid);
+            self.window.swap_buffers();
+            self.glfw.poll_events();
         }
         let mut representations = HashMap::<u8, i32>::new();
 
