@@ -2,8 +2,6 @@ use std::{ffi::c_void, mem::size_of, f32::consts::PI, collections::HashMap};
 
 use gl::types::{GLenum, GLfloat, GLvoid};
 use glam::{Vec3, Mat4, Vec4};
-use glfw::{Glfw, Window, Context};
-use image::{ImageBuffer, Rgba};
 use memoffset::offset_of;
 
 use crate::structs::Vertex;
@@ -15,8 +13,6 @@ pub struct Renderer {
     vao: u32,
     vbo: u32,
     n_vertices: i32,
-    window: Window,
-    glfw: Glfw,
 }
 
 impl Renderer {
@@ -112,8 +108,6 @@ pub fn new() -> Self {
         vao: 0,
         vbo: 0,
         n_vertices: 0,
-        window,
-        glfw,
     }
 }
 
@@ -201,7 +195,7 @@ pub fn upload_mesh_to_gpu(&mut self, vertices: &Vec<Vertex>) {
     self.n_vertices = vertices.len() as _;
 }
 
-pub fn get_visibility_at_position(&mut self, position: Vec3, dbg_curr_field: u128, node_id: usize) -> u128 {    
+pub fn get_visibility_at_position(&mut self, position: Vec3, _dbg_curr_field: u128, _node_id: usize) -> u128 {    
     // Set uniform variables
 
     //let modified_position = Vec4::new(-Z)
@@ -217,25 +211,13 @@ pub fn get_visibility_at_position(&mut self, position: Vec3, dbg_curr_field: u12
     for mat in &mut view_matrices {
         mat.w_axis = mat.mul_vec4((-position).extend(1.0));
     }
-    let vectors = [
-        glam::vec3(1.0, 0.0, 0.0),
-        glam::vec3(-1.0, 0.0, 0.0),
-        glam::vec3(0.0, 0.99, 0.01),
-        glam::vec3(0.0, -0.99, 0.01),
-        glam::vec3(0.0, 0.0, 1.0),
-        glam::vec3(0.0, 0.0, -1.0),
-    ];
     let proj_matrix = Mat4::perspective_lh(PI / 4.0, 1.0, 0.01, 100000.0);
     let buffer_size = (RESOLUTION * RESOLUTION * 4) as usize;
     let mut vis_field = 0u128;
     let mut buffer = vec![0u8; buffer_size];
-    for (id, view_matrix) in view_matrices.iter().enumerate() {
+
+    for view_matrix in &view_matrices {
         let view_matrix = *view_matrix;
-        let view_matrix2 = Mat4::look_to_lh(
-            position,
-            vectors[id],
-            glam::vec3(0.0, -1.0, 0.0),
-        );
         let comb_mat = proj_matrix * view_matrix;
         unsafe {
             gl::UseProgram(self.program);

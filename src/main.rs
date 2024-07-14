@@ -71,7 +71,6 @@ fn main() {
                 let end = node.left_first + node.count;
                 let mut visbits: u128 = 0u128;
                 let leaf_id = vislist_bitfields.len();
-                println!("from node {node_id}");
                 for i in start..end {
                     if rnd_pos_bvh.vertices[rnd_pos_bvh.indices[i as usize] as usize].b == 0 {
                         continue
@@ -79,7 +78,6 @@ fn main() {
                     let position = rnd_pos_bvh.vertices[rnd_pos_bvh.indices[i as usize] as usize].position();
                     visbits |= renderer.get_visibility_at_position(position, visbits, leaf_id);
                 }
-                println!("");
                 vislist_nodes[node_id].child_or_vis_index = (1 << 31) | (vislist_bitfields.len() as u32);
                 vislist_bitfields.push(visbits)
             }
@@ -156,7 +154,6 @@ fn get_visbox_positions_from_input_col(
         let v2 = VertexCol::read(input_col);
         let normal = VertexCol::read(input_col);
         let normal = glam::vec3(normal.x as f32, normal.y as f32, normal.z as f32).normalize();
-        dbg!(&normal);
 
         render_positions.push(Vertex {
             x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / -(3.0 * 512.0)) as i16,
