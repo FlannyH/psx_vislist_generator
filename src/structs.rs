@@ -111,9 +111,9 @@ impl VertexPSX {
 impl VertexCol {
     pub fn read(buf_reader: &mut File) -> VertexCol {
         VertexCol {
-            x: buf_reader.read_i16::<LittleEndian>().unwrap() as i32,
-            y: buf_reader.read_i16::<LittleEndian>().unwrap() as i32,
-            z: buf_reader.read_i16::<LittleEndian>().unwrap() as i32,
+            x: buf_reader.read_i32::<LittleEndian>().unwrap(),
+            y: buf_reader.read_i32::<LittleEndian>().unwrap(),
+            z: buf_reader.read_i32::<LittleEndian>().unwrap(),
         }
     }
 }

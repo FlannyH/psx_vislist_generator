@@ -146,6 +146,7 @@ fn get_visbox_positions_from_input_col(
     let n_tris = input_col.read_u32::<LittleEndian>().unwrap() / 3;
     input_col.seek(SeekFrom::Start(12)).unwrap();
     let triangle_data_offset = input_col.read_u32::<LittleEndian>().unwrap();
+    input_col.seek(SeekFrom::Start(triangle_data_offset as u64 + 32)).unwrap(); // header is 32 bytes
     
     // Loop over all triangles
     for _ in 0..n_tris {
@@ -154,12 +155,13 @@ fn get_visbox_positions_from_input_col(
         let v1 = VertexCol::read(input_col);
         let v2 = VertexCol::read(input_col);
         let normal = VertexCol::read(input_col);
-        let normal = glam::vec3(normal.x as f32, normal.y as f32, normal.z as f32);
+        let normal = glam::vec3(normal.x as f32, normal.y as f32, normal.z as f32).normalize();
+        dbg!(&normal);
 
         render_positions.push(Vertex {
-            x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / 3.0) as i16,
-            y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / 3.0) as i16 - eye_height,
-            z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / 3.0) as i16,
+            x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / -(3.0 * 512.0)) as i16,
+            y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / -(3.0 * 512.0)) as i16 - eye_height,
+            z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / -(3.0 * 512.0)) as i16,
             r: 0,
             g: 0,
             b: match normal.y > 0.5 {
@@ -170,9 +172,9 @@ fn get_visbox_positions_from_input_col(
         });
 
         render_positions.push(Vertex {
-            x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / 3.0) as i16,
-            y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / 3.0) as i16 - jump_height,
-            z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / 3.0) as i16,
+            x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / -(3.0 * 512.0)) as i16,
+            y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / -(3.0 * 512.0)) as i16 - jump_height,
+            z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / -(3.0 * 512.0)) as i16,
             r: 0,
             g: 0,
             b: match normal.y > 0.5 {
