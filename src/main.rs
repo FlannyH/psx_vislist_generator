@@ -141,22 +141,20 @@ fn get_visbox_positions_from_input_col(
         eprintln!("Failed to open collision model!");
         return None;
     }
-
-    // Loop over all triangles
+    
+    // Find triangle data
     let n_tris = input_col.read_u32::<LittleEndian>().unwrap() / 3;
+    input_col.seek(SeekFrom::Start(12)).unwrap();
+    let triangle_data_offset = input_col.read_u32::<LittleEndian>().unwrap();
+    
+    // Loop over all triangles
     for _ in 0..n_tris {
         // Read vertex
         let v0 = VertexCol::read(input_col);
         let v1 = VertexCol::read(input_col);
         let v2 = VertexCol::read(input_col);
-
-        // Generate normal
-        let vtx0 = glam::vec3(v0.x as f32, v0.y as f32, v0.z as f32);
-        let vtx1 = glam::vec3(v1.x as f32, v1.y as f32, v1.z as f32);
-        let vtx2 = glam::vec3(v2.x as f32, v2.y as f32, v2.z as f32);
-        let v01 = vtx1 - vtx0;
-        let v02 = vtx2 - vtx0;
-        let normal = v01.cross(v02).normalize();
+        let normal = VertexCol::read(input_col);
+        let normal = glam::vec3(normal.x as f32, normal.y as f32, normal.z as f32);
 
         render_positions.push(Vertex {
             x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / 3.0) as i16,

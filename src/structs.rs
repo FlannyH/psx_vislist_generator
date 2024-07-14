@@ -52,10 +52,9 @@ impl Vertex {
 }
 
 pub struct VertexCol {
-    pub x: i16,
-    pub y: i16,
-    pub z: i16,
-    pub terrain_id: u16,
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
 }
 
 pub enum Axis {
@@ -112,10 +111,9 @@ impl VertexPSX {
 impl VertexCol {
     pub fn read(buf_reader: &mut File) -> VertexCol {
         VertexCol {
-            x: buf_reader.read_i16::<LittleEndian>().unwrap(),
-            y: buf_reader.read_i16::<LittleEndian>().unwrap(),
-            z: buf_reader.read_i16::<LittleEndian>().unwrap(),
-            terrain_id: buf_reader.read_u16::<LittleEndian>().unwrap(),
+            x: buf_reader.read_i16::<LittleEndian>().unwrap() as i32,
+            y: buf_reader.read_i16::<LittleEndian>().unwrap() as i32,
+            z: buf_reader.read_i16::<LittleEndian>().unwrap() as i32,
         }
     }
 }
