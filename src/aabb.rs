@@ -2,7 +2,7 @@ use glam::Vec3;
 
 #[repr(C)]
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AABB {
     pub min: Vec3,
     pub max: Vec3,

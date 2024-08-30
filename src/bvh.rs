@@ -43,16 +43,18 @@ impl Bvh {
         // Calculate node bounds
         let begin = node.left_first;
         let end = begin + node.count;
-        for i in begin..end {
-            let vertex = self
-                .vertices
-                .get(*self.indices.get(i as usize).unwrap() as usize)
-                .unwrap();
-            node.bounds.grow(vertex.position());
+        if rec_depth == 0 {
+            for i in begin..end {
+                let vertex = self
+                    .vertices
+                    .get(*self.indices.get(i as usize).unwrap() as usize)
+                    .unwrap();
+                node.bounds.grow(vertex.position());
+            }
         }
 
-        // Only subdivide if we have more than 2 triangles
-        if node.count <= 40 || rec_depth > 6 {
+        // Don't make too many sections
+        if node.count <= 80 || rec_depth > 6 {
             return;
         }
 
@@ -86,7 +88,9 @@ impl Bvh {
         let node_count = node.count;
         node.count = 0; // this is not a leaf node.
         node.left_first = left as _; // this node has to point to the 2 child nodes
-        let split_index = self.partition(split_axis, split_pos, start_index, node_count);
+        let split_index = self.partition(&split_axis, split_pos, start_index, node_count);
+        let mut bounds_left = self.nodes[node_index].bounds.clone();
+        let mut bounds_right = self.nodes[node_index].bounds.clone();
         let node = &mut self.nodes[node_index];
 
         // Abort if one of the sides is empty
@@ -96,24 +100,38 @@ impl Bvh {
         }
 
         // Create 2 child nodes
+        match &split_axis {
+            Axis::X => {
+                bounds_left.max.x = split_pos;
+                bounds_right.min.x = split_pos;
+            },
+            Axis::Y => {
+                bounds_left.max.y = split_pos;
+                bounds_right.min.y = split_pos;
+            },
+            Axis::Z => {
+                bounds_left.max.z = split_pos;
+                bounds_right.min.z = split_pos;
+            },
+        }
         self.nodes.push(BvhNode {
-            bounds: AABB::new(),
+            bounds: bounds_left,
             left_first: start_index,
             count: split_index - start_index,
         });
         let right = self.nodes.len();
         self.nodes.push(BvhNode {
-            bounds: AABB::new(),
+            bounds: bounds_right,
             left_first: split_index,
             count: start_index + node_count - split_index,
         });
 
-        // Subdivide further
+        // Subdivide the left and right nodes
         self.subdivide(left, rec_depth + 1);
         self.subdivide(right, rec_depth + 1);
     }
 
-    fn partition(&mut self, axis: Axis, pivot: f32, start: i32, count: i32) -> i32 {
+    fn partition(&mut self, axis: &Axis, pivot: f32, start: i32, count: i32) -> i32 {
         let mut i = start;
         let mut j = start + count - 1;
         while i <= j {

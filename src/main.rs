@@ -33,7 +33,7 @@ fn main() {
     drop(input_col);
 
     let mut rnd_pos_bvh = Bvh::new(visbox_positions);
-    rnd_pos_bvh.pad_bounding_boxes(250.0, 250.0, 250.0);
+    rnd_pos_bvh.pad_bounding_boxes(0.0, 0.0, 0.0);
     
     let mut input_msh = File::open(Path::new(args[1].as_str())).unwrap();
     let (_mesh_descs, vertices) = get_mesh_descs_from_input_msh(&mut input_msh).unwrap();

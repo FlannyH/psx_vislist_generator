@@ -61,6 +61,7 @@ pub struct VertexCol {
     pub z: i32,
 }
 
+#[derive(Debug)]
 pub enum Axis {
     X,
     Y,
