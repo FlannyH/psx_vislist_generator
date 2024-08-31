@@ -72,9 +72,6 @@ fn main() {
                 let mut visbits: u128 = 0u128;
                 let leaf_id = vislist_bitfields.len();
                 for i in start..end {
-                    if rnd_pos_bvh.vertices[rnd_pos_bvh.indices[i as usize] as usize].b == 0 {
-                        continue
-                    }
                     let position = rnd_pos_bvh.vertices[rnd_pos_bvh.indices[i as usize] as usize].position();
                     visbits |= renderer.get_visibility_at_position(position, visbits, leaf_id);
                 }
@@ -126,6 +123,22 @@ struct PsxNode {
     child_or_vis_index: u32,
 }
 
+fn triangle_weighted_average_offset(verts: [&VertexCol; 3], weights: [f32; 3], offset: glam::Vec3, color: [u8; 3]) -> Vertex {
+    let combined_weight: f32 = weights.iter().sum();
+    let x: f32 = ((verts[0].x as f32 * weights[0]) + (verts[1].x as f32 * weights[1]) + (verts[2].x as f32 * weights[2])) / combined_weight;
+    let y: f32 = ((verts[0].y as f32 * weights[0]) + (verts[1].y as f32 * weights[1]) + (verts[2].y as f32 * weights[2])) / combined_weight;
+    let z: f32 = ((verts[0].z as f32 * weights[0]) + (verts[1].z as f32 * weights[1]) + (verts[2].z as f32 * weights[2])) / combined_weight;
+    Vertex {
+        x: -((x / 512.0) + offset.x) as i16,
+        y: -((y / 512.0) + offset.y) as i16,
+        z: -((z / 512.0) + offset.z) as i16,
+        r: color[0],
+        g: color[1],
+        b: color[2],
+        section_id: 0,
+    }
+}
+
 fn get_visbox_positions_from_input_col(
     input_col: &mut File,
 ) -> Option<Vec<Vertex>> {
@@ -155,31 +168,21 @@ fn get_visbox_positions_from_input_col(
         let normal = VertexCol::read(input_col);
         let normal = glam::vec3(normal.x as f32, normal.y as f32, normal.z as f32).normalize();
 
-        render_positions.push(Vertex {
-            x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / -(3.0 * 512.0)) as i16,
-            y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / -(3.0 * 512.0)) as i16 - eye_height,
-            z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / -(3.0 * 512.0)) as i16,
-            r: 0,
-            g: 0,
-            b: match normal.y > 0.5 {
-                true => 1,
-                false => 0,
-            },
-            section_id: 0,
-        });
+        let ground = match normal.y > 0.5 {
+            true => 1,
+            false => 0,
+        };
 
-        render_positions.push(Vertex {
-            x: (((v0.x as f32) + (v1.x as f32) + (v2.x as f32)) / -(3.0 * 512.0)) as i16,
-            y: (((v0.y as f32) + (v1.y as f32) + (v2.y as f32)) / -(3.0 * 512.0)) as i16 - jump_height,
-            z: (((v0.z as f32) + (v1.z as f32) + (v2.z as f32)) / -(3.0 * 512.0)) as i16,
-            r: 0,
-            g: 0,
-            b: match normal.y > 0.5 {
-                true => 1,
-                false => 0,
-            },
-            section_id: 0,
-        });
+
+        for weights in [[1.0, 1.0, 1.0], [1.0, 0.33, 0.33], [0.33, 1.0, 0.33], [0.33, 0.33, 1.0]] {
+            if normal.y > 0.4 {
+                render_positions.push(triangle_weighted_average_offset([&v0, &v1, &v2], weights, glam::vec3(0.0, eye_height as f32, 0.0), [0, 0, ground]));
+                render_positions.push(triangle_weighted_average_offset([&v0, &v1, &v2], weights, glam::vec3(0.0, jump_height as f32, 0.0), [0, 0, ground]));
+            }
+            if normal.y < 0.6 {
+                render_positions.push(triangle_weighted_average_offset([&v0, &v1, &v2], weights, normal * 40.0, [0, 0, ground]));
+            }
+        }
     }
     Some(render_positions)
 }
