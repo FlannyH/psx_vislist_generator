@@ -236,8 +236,6 @@ pub fn get_visibility_at_position(&mut self, position: Vec3, _dbg_curr_field: u1
             gl::Enable(gl::CULL_FACE);
             gl::DrawArrays(gl::TRIANGLES, 0, self.n_vertices as i32);
             gl::ReadPixels(0, 0, RESOLUTION as i32, RESOLUTION as i32, gl::RGBA, gl::UNSIGNED_BYTE, buffer.as_mut_ptr() as *mut GLvoid);
-            self.window.swap_buffers();
-            self.glfw.poll_events();
         }
         let mut representations = HashMap::<u8, i32>::new();
 
