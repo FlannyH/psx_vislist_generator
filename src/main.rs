@@ -174,7 +174,7 @@ fn get_visbox_positions_from_input_col(
         };
 
 
-        for weights in [[1.0, 1.0, 1.0], [1.0, 0.33, 0.33], [0.33, 1.0, 0.33], [0.33, 0.33, 1.0]] {
+        for weights in [[1.0, 1.0, 1.0]] {
             if normal.y > 0.4 {
                 render_positions.push(triangle_weighted_average_offset([&v0, &v1, &v2], weights, glam::vec3(0.0, eye_height as f32, 0.0), [0, 0, ground]));
                 render_positions.push(triangle_weighted_average_offset([&v0, &v1, &v2], weights, glam::vec3(0.0, jump_height as f32, 0.0), [0, 0, ground]));
