@@ -218,7 +218,7 @@ pub fn get_visibility_at_position(&mut self, position: Vec3, _dbg_curr_field: u1
     for mat in &mut view_matrices {
         mat.w_axis = mat.mul_vec4((-position).extend(1.0));
     }
-    let proj_matrix = Mat4::perspective_lh(PI / 4.0, 1.0, 0.01, 100000.0);
+    let proj_matrix = Mat4::perspective_lh(PI / 2.0, 1.0, 0.01, 100000.0);
     let buffer_size = (RESOLUTION * RESOLUTION * 4) as usize;
     let mut vis_field = 0u128;
     let mut buffer = vec![0u8; buffer_size];
