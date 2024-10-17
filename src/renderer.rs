@@ -2,17 +2,21 @@ use std::{ffi::c_void, mem::size_of, f32::consts::PI, collections::HashMap};
 
 use gl::types::{GLenum, GLfloat, GLvoid};
 use glam::{Vec3, Mat4, Vec4};
+use glfw::{Glfw, Window};
 use memoffset::offset_of;
 
 use crate::structs::Vertex;
 
 const RESOLUTION: u32 = 128;
 
+#[allow(dead_code)] // For some reason Rust is convinced we don't need to store window or glfw instance anywhere. Removing these caused very weird bugs.
 pub struct Renderer {
     program: u32,
     vao: u32,
     vbo: u32,
     n_vertices: i32,
+    window: Window,
+    glfw: Glfw,
 }
 
 impl Renderer {
@@ -110,6 +114,8 @@ pub fn new() -> Self {
         vao: 0,
         vbo: 0,
         n_vertices: 0,
+        window,
+        glfw,
     }
 }
 
