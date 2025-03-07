@@ -9,6 +9,8 @@ pub struct HeaderFMSH {
     pub offset_mesh_desc: u32,
     pub offset_vertex_data: u32,
     pub offset_mesh_names: u32,
+    pub offset_lightmap_uv: u32,
+    pub offset_lightmap_tex: u32,
 }
 
 #[repr(C)]
@@ -76,6 +78,8 @@ impl HeaderFMSH {
             offset_mesh_desc: buf_reader.read_u32::<LittleEndian>().unwrap(),
             offset_vertex_data: buf_reader.read_u32::<LittleEndian>().unwrap(),
             offset_mesh_names: buf_reader.read_u32::<LittleEndian>().unwrap(),
+            offset_lightmap_uv: buf_reader.read_u32::<LittleEndian>().unwrap(),
+            offset_lightmap_tex: buf_reader.read_u32::<LittleEndian>().unwrap(),
         }
     }
 }
