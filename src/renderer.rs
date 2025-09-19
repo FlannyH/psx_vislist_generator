@@ -254,6 +254,10 @@ pub fn get_visibility_at_position(&mut self, position: Vec3, _dbg_curr_field: u1
                 continue;
             }
 
+            if key >= 128 {
+                panic!("Too many sections ({key} >= 128)!");
+            }
+            
             vis_field |= 1 << key;
         }
     }
